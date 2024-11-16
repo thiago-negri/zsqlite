@@ -30,20 +30,5 @@ exe.linkLibrary(zsqlite.artifact("zsqlite"));
 
 ## Use
 
-```zig
-const std = @import("std");
-const c = @cImport({
-    @cInclude("sqlite3.h");
-});
-const print = std.debug.print;
+See [example-usage.zig](./example-usage.zig)
 
-pub fn main() !void {
-    var db: ?*c.sqlite3 = undefined;
-    if (c.SQLITE_OK != c.sqlite3_open(":memory:", &db)) {
-        print("fail\n", .{});
-        return;
-    }
-    defer _ = c.sqlite3_close(db);
-    print("it works!\n", .{});
-}
-```
