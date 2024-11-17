@@ -10,10 +10,9 @@ pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arena.deinit();
 
-    // Connect to an in-memory database.
-    const db = zsql.Sqlite3.init(":memory:") catch {
+    const db = zsql.Sqlite3.init(":memory:") catch |err| {
         print("Failed to connect to SQLite", .{});
-        return error.SqliteError;
+        return err;
     };
     defer db.deinit();
 
@@ -42,6 +41,7 @@ fn createTable(db: zsql.Sqlite3) !void {
         \\  belong_to CHAR(2) NOT NULL
         \\);
     ;
+    errdefer db.printError("Failed to create table");
     try db.exec(sql);
 }
 
@@ -52,6 +52,7 @@ fn insert(db: zsql.Sqlite3) !void {
         \\ ('r', 'us'),
         \\ ('e', 'us');
     ;
+    errdefer db.printError("Failed to insert rows");
     try db.exec(sql);
 }
 
@@ -62,7 +63,10 @@ fn select(db: zsql.Sqlite3, alloc: std.mem.Allocator) !std.ArrayList([]const u8)
         \\ WHERE belong_to = 'us';
     ;
 
-    const stmt = try zsql.Statement.init(db, sql);
+    const stmt = stmt: {
+        errdefer db.printError("Failed to prepare select statement");
+        break :stmt try zsql.Statement.init(db, sql);
+    };
     defer stmt.deinit();
 
     var names = std.ArrayList([]const u8).init(alloc);
