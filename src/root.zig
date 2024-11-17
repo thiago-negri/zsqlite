@@ -97,7 +97,8 @@ pub const Sqlite3Statement = struct {
     }
 
     pub fn bindText(self: Self, col: i32, text: []const u8) !void {
-        const err = c.sqlite3_bind_text(self.ptr, col, text.ptr, @intCast(text.len), c.SQLITE_STATIC);
+        const stmt = self.ptr;
+        const err = c.sqlite3_bind_text(stmt, col, text.ptr, @intCast(text.len), c.SQLITE_STATIC);
         try checkError(err);
     }
 
@@ -142,16 +143,18 @@ test "all" {
     {
         const insert = try db.prepare("INSERT INTO codebases (name, belong_to) VALUES (?, ?);");
         defer insert.deinit();
+
+        try insert.bindText(2, "us");
+
         try insert.bindText(1, "a");
-        try insert.bindText(2, "us");
         try insert.exec();
         try insert.reset();
+
         try insert.bindText(1, "r");
-        try insert.bindText(2, "us");
         try insert.exec();
         try insert.reset();
+
         try insert.bindText(1, "e");
-        try insert.bindText(2, "us");
         try insert.exec();
     }
 
