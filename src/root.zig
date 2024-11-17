@@ -146,7 +146,7 @@ pub const Sqlite3Statement = struct {
     }
 
     /// Wrapper of sqlite3_bind_null
-    fn bindNull(self: Self, col: i32) !void {
+    pub fn bindNull(self: Self, col: i32) !void {
         const err = c.sqlite3_bind_null(self.ptr, col);
         try expectSqliteOk(err);
     }
