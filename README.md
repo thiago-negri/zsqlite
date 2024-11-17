@@ -36,6 +36,4 @@ exe.root_module.addImport("zsqlite", zsqlite_module);
 
 ## Use
 
-See:
-
-- [example-usage-module.zig](./example-usage-module.zig)
+See [zsqlite-demo](https://github.com/thiago-negri/zsqlite-demo) for an example on how to use.
