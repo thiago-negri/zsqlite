@@ -8,7 +8,7 @@ pub fn build(b: *std.Build) void {
 
     const lib = b.addStaticLibrary(.{
         .name = "zsqlite",
-        .root_source_file = b.path("src/lib.zig"),
+        .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -23,7 +23,17 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(lib);
 
     const module = b.addModule("zsqlite", .{
-        .root_source_file = b.path("src/lib.zig"),
+        .root_source_file = b.path("src/root.zig"),
     });
     module.addIncludePath(sqlite.path(""));
+
+    const lib_unit_tests = b.addTest(.{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
+
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&run_lib_unit_tests.step);
 }
