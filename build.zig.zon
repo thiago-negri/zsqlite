@@ -1,6 +1,11 @@
 .{
     .name = "zsqlite",
-    .version = "3.47.0",
-    .dependencies = .{ .sqlite = .{ .url = "https://sqlite.org/2024/sqlite-amalgamation-3470000.zip", .hash = "12208ecb28699b71d3f37e8616418f5a53891418f13772b59dcbe19a67ace9880ae8" } },
+    .version = "0.0.1",
+    .dependencies = .{
+        .@"zsqlite-c" = .{
+            .url = "https://github.com/thiago-negri/zsqlite-c/archive/refs/tags/v3.47.0.zip",
+            .hash = "1220a9d4c8c23db1eb6a0bf7a7add2fdfc3069f7dfa79677f7b65f003a1a63c0ffda",
+        },
+    },
     .paths = .{ "build.zig", "build.zig.zon", "src" },
 }
