@@ -46,14 +46,17 @@ fn createTable(db: zsql.Sqlite3) !void {
 }
 
 fn insert(db: zsql.Sqlite3) !void {
-    const sql =
-        \\INSERT INTO codebases (name, belong_to) VALUES
-        \\ ('a', 'us'),
-        \\ ('r', 'us'),
-        \\ ('e', 'us');
-    ;
     errdefer db.printError("Failed to insert rows");
-    try db.exec(sql);
+
+    const names: [3][]const u8 = .{ "a", "r", "e" };
+    const sql = "INSERT INTO codebases (name, belong_to) VALUES (?, ?);";
+    const stmt = try db.prepare(sql);
+    try stmt.bindText(2, "us");
+    for (names) |name| {
+        try stmt.bindText(1, name);
+        try stmt.exec();
+        try stmt.reset();
+    }
 }
 
 fn select(db: zsql.Sqlite3, alloc: std.mem.Allocator) !std.ArrayList([]const u8) {
@@ -65,7 +68,7 @@ fn select(db: zsql.Sqlite3, alloc: std.mem.Allocator) !std.ArrayList([]const u8)
 
     const stmt = stmt: {
         errdefer db.printError("Failed to prepare select statement");
-        break :stmt try zsql.Statement.init(db, sql);
+        break :stmt try db.prepare(sql);
     };
     defer stmt.deinit();
 

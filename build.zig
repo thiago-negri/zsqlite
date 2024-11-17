@@ -18,6 +18,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    zsqlite_lib_test.linkLibrary(zsqlite_c_artifact);
     const zsqlite_lib_test_run = b.addRunArtifact(zsqlite_lib_test);
 
     const step_test = b.step("test", "Run unit tests");
