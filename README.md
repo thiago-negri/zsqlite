@@ -1,39 +1,40 @@
 # zsqlite
 
-API for using SQLite from Zig.
+Ziggified wrapper around SQLite.
 
-You can either do `@cImport("sqlite3.h")` and work directly with the C API.
-Or `@import("zsqlite")` and use the wrapper API.
+Goals:
+- No extra stuff under the hood (e.g. no automatically parsing column names);
+- Correlate with the C API;
+- Provide a Zig-friendly interface;
+- Provide extras so it's easier to work with it in Zig (e.g. offer a way to allocate strings);
 
-The wrapper API tries to ziggify the SQLite API but without doing extra stuff like
-parsing column names.  It tries to correlate directly with the C API.
+It's currently very limited, as I'm only using this for a personal project. So my current target
+is only on a subset of features that I use. 
+
+Feel free to fork or offer pull requests.
+
+If you only want to use SQLite as a static library in Zig, check out
+[zsqlite-c](https://github.com/thiago-negri/zsqlite-c/).
 
 ## Install
 
-First add it as a dependency to your project:
+Add as a dependency:
 
 ```sh
 zig fetch --save "https://github.com/thiago-negri/zsqlite/archive/refs/heads/master.zip"
 ```
 
-Then add it to your build:
+Add to your build:
 
 ```zig
 // Add SQLite
 const zsqlite = b.dependency("zsqlite", .{ .target = target, .optimize = optimize });
-const zsqlite_artifact = zsqlite.artifact("zsqlite");
 const zsqlite_module = zsqlite.module("zsqlite");
 exe.root_module.addImport("zsqlite", zsqlite_module);
-exe.linkLibrary(zsqlite_artifact);
 ```
-
-If you only want to import the C header, you can remove the module-related stuff form the previous
-snippet.
 
 ## Use
 
 See:
 
-- [example-usage-c-import.zig](./example-usage-c-import.zig) for example using `@cImport`
-- [example-usage-module.zig](./example-usage-module.zig) for example using `@import("zsqlite")`
-
+- [example-usage-module.zig](./example-usage-module.zig)
