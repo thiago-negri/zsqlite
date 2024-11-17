@@ -6,6 +6,7 @@ Goals:
 - No extra stuff under the hood (e.g. no automatically parsing column names);
 - Correlate with the C API;
 - Provide a Zig-friendly interface;
+- Provide more safety (e.g. automatically close/finalize if something goes wrong);
 - Provide extras so it's easier to work with it in Zig (e.g. offer a way to allocate strings);
 
 It's currently very limited, as I'm only using this for a personal project. So my current target
