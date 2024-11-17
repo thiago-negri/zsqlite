@@ -19,7 +19,7 @@ pub const Sqlite3 = struct {
         };
 
         const err = c.sqlite3_open(filename.ptr, &db);
-        try checkError(err);
+        try expectSqliteOk(err);
 
         return Sqlite3{ .ptr = db };
     }
@@ -66,7 +66,7 @@ pub const Sqlite3Statement = struct {
         };
 
         const err = c.sqlite3_prepare_v2(db.ptr, sql.ptr, @intCast(sql.len + 1), &stmt, null);
-        try checkError(err);
+        try expectSqliteOk(err);
 
         return Sqlite3Statement{ .ptr = stmt };
     }
@@ -107,14 +107,14 @@ pub const Sqlite3Statement = struct {
     /// Wrapper of sqlite3_reset
     pub fn reset(self: Self) !void {
         const err = c.sqlite3_reset(self.ptr);
-        try checkError(err);
+        try expectSqliteOk(err);
     }
 
     /// Wrapper of sqlite3_bind_text
     pub fn bindText(self: Self, col: i32, text: []const u8) !void {
         const stmt = self.ptr;
         const err = c.sqlite3_bind_text(stmt, col, text.ptr, @intCast(text.len), c.SQLITE_STATIC);
-        try checkError(err);
+        try expectSqliteOk(err);
     }
 };
 
@@ -144,7 +144,7 @@ pub const Sqlite3StatementRow = struct {
 
 pub const SqliteError = error{ Misuse, Error };
 
-fn checkError(err: c_int) SqliteError!void {
+fn expectSqliteOk(err: c_int) SqliteError!void {
     if (c.SQLITE_OK != err) {
         return SqliteError.Error;
     }
