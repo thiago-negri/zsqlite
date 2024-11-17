@@ -8,9 +8,11 @@ pub fn build(b: *std.Build) void {
 
     const lib = b.addStaticLibrary(.{
         .name = "zsqlite",
+        .root_source_file = b.path("src/lib.zig"),
         .target = target,
         .optimize = optimize,
     });
+    lib.addIncludePath(sqlite.path(""));
     lib.installHeader(sqlite.path("sqlite3.h"), "sqlite3.h");
     lib.installHeader(sqlite.path("sqlite3ext.h"), "sqlite3ext.h");
     lib.addCSourceFiles(.{
@@ -19,4 +21,9 @@ pub fn build(b: *std.Build) void {
     });
     lib.linkLibC();
     b.installArtifact(lib);
+
+    const module = b.addModule("zsqlite", .{
+        .root_source_file = b.path("src/lib.zig"),
+    });
+    module.addIncludePath(sqlite.path(""));
 }

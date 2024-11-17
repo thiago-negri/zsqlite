@@ -8,6 +8,8 @@ const GPA = std.heap.GeneralPurposeAllocator(.{});
 pub fn main() !void {
     var gpa = GPA{};
     defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
 
     // Database connection handle.
     var db: ?*c.sqlite3 = null;
@@ -26,13 +28,11 @@ pub fn main() !void {
     // Create a table.
     try createTable(db);
 
-    // Insert some data.
+    // Insert some.
     try insert(db);
 
-    // Select some data.
-    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    // Select some.
     const names = try select(db, arena.allocator());
-    defer arena.deinit();
 
     // Print results.
     print("All your codebases ", .{});
@@ -81,29 +81,27 @@ fn select(db: ?*c.sqlite3, alloc: std.mem.Allocator) !std.ArrayList([]const u8) 
     }
 
     var names = std.ArrayList([]const u8).init(alloc);
-    errdefer names.deinit();
+    errdefer {
+        for (names.items) |name| {
+            alloc.free(name);
+        }
+        names.deinit();
+    }
 
-    read: switch (c.sqlite3_step(stmt)) {
-        c.SQLITE_ROW => {
-            // The pointer returned by SQLite is invalidated on next 'step' call,
-            // we need to copy the memory.
-            const c_ptr = c.sqlite3_column_text(stmt, 0);
-            const size: usize = @intCast(c.sqlite3_column_bytes(stmt, 0));
-            const data = c_ptr[0..size];
-            const name = try alloc.dupe(u8, data);
-            errdefer alloc.free(name);
-            try names.append(name);
-            continue :read c.sqlite3_step(stmt);
-        },
-
-        c.SQLITE_DONE => {
-            break :read;
-        },
-
-        else => {
-            printSqliteError(db, "Failed to fetch rows");
-            return error.SqliteError;
-        },
+    var step = c.sqlite3_step(stmt);
+    while (step == c.SQLITE_ROW) : (step = c.sqlite3_step(stmt)) {
+        // The pointer returned by SQLite is invalidated on next 'step' call,
+        // we need to copy the memory.
+        const c_ptr = c.sqlite3_column_text(stmt, 0);
+        const size: usize = @intCast(c.sqlite3_column_bytes(stmt, 0));
+        const data = c_ptr[0..size];
+        const name = try alloc.dupe(u8, data);
+        errdefer alloc.free(name);
+        try names.append(name);
+    }
+    if (step != c.SQLITE_DONE) {
+        printSqliteError(db, "Failed to fetch rows");
+        return error.SqliteError;
     }
 
     return names;
