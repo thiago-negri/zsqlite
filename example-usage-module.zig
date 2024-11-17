@@ -1,5 +1,5 @@
 const std = @import("std");
-const zsql = @import("zsqlite");
+const Sqlite3 = @import("zsqlite").Sqlite3;
 
 const print = std.debug.print;
 const GPA = std.heap.GeneralPurposeAllocator(.{});
@@ -10,7 +10,7 @@ pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arena.deinit();
 
-    const db = zsql.Sqlite3.init(":memory:") catch |err| {
+    const db = Sqlite3.init(":memory:") catch |err| {
         print("Failed to connect to SQLite", .{});
         return err;
     };
@@ -33,7 +33,7 @@ pub fn main() !void {
     print(" belong to us!\n", .{});
 }
 
-fn createTable(db: zsql.Sqlite3) !void {
+fn createTable(db: Sqlite3) !void {
     const sql =
         \\CREATE TABLE codebases (
         \\  id INT PRIMARY KEY,
@@ -45,7 +45,7 @@ fn createTable(db: zsql.Sqlite3) !void {
     try db.exec(sql);
 }
 
-fn insert(db: zsql.Sqlite3) !void {
+fn insert(db: Sqlite3) !void {
     errdefer db.printError("Failed to insert rows");
 
     const names: [3][]const u8 = .{ "a", "r", "e" };
@@ -59,7 +59,7 @@ fn insert(db: zsql.Sqlite3) !void {
     }
 }
 
-fn select(db: zsql.Sqlite3, alloc: std.mem.Allocator) !std.ArrayList([]const u8) {
+fn select(db: Sqlite3, alloc: std.mem.Allocator) !std.ArrayList([]const u8) {
     const sql =
         \\SELECT name
         \\ FROM codebases
@@ -80,9 +80,8 @@ fn select(db: zsql.Sqlite3, alloc: std.mem.Allocator) !std.ArrayList([]const u8)
         names.deinit();
     }
 
-    var step = try stmt.step();
-    while (step == .row) : (step = try stmt.step()) {
-        const name = try stmt.columnText(0, alloc);
+    while (try stmt.step()) |row| {
+        const name = try row.columnText(0, alloc);
         errdefer alloc.free(name);
         try names.append(name);
     }
