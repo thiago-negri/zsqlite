@@ -5,7 +5,7 @@ const c = @cImport({
 
 /// Wrapper of sqlite3
 pub const Sqlite3 = struct {
-    ptr: ?*c.sqlite3,
+    ptr: *c.sqlite3,
 
     /// Wrapper of sqlite3_open
     pub fn init(filename: []const u8) SqliteError!Sqlite3 {
@@ -19,7 +19,11 @@ pub const Sqlite3 = struct {
         const err = c.sqlite3_open(filename.ptr, &db);
         try expectSqliteOk(err);
 
-        return Sqlite3{ .ptr = db };
+        if (db) |ptr| {
+            return Sqlite3{ .ptr = ptr };
+        } else {
+            return SqliteError.Error;
+        }
     }
 
     /// Wrapper of sqlite3_close
@@ -49,7 +53,11 @@ pub const Sqlite3 = struct {
         const err = c.sqlite3_prepare_v2(self.ptr, sql.ptr, @intCast(sql.len + 1), &stmt, null);
         try expectSqliteOk(err);
 
-        return Sqlite3Statement{ .ptr = stmt };
+        if (stmt) |ptr| {
+            return Sqlite3Statement{ .ptr = ptr };
+        } else {
+            return SqliteError.Error;
+        }
     }
 
     /// Extra, prints the last error related to this database
@@ -64,7 +72,7 @@ pub const Sqlite3 = struct {
 /// Wrapper of sqlite3_stmt, exposing a subset of functions that are not related to the current
 /// row after a call to sqlite3_step.
 pub const Sqlite3Statement = struct {
-    ptr: ?*c.sqlite3_stmt,
+    ptr: *c.sqlite3_stmt,
 
     /// Wrapper of sqlite3_finalize
     pub fn deinit(self: Sqlite3Statement) void {
@@ -169,7 +177,7 @@ pub const Sqlite3Statement = struct {
 /// Wrapper of sqlite3_stmt, exposing subset of functions related to the current row after a call
 /// to sqlite3_step.
 pub const Sqlite3StatementRow = struct {
-    ptr: ?*c.sqlite3_stmt,
+    ptr: *c.sqlite3_stmt,
 
     /// Extra, duplicates the memory returned by sqlite3_column_text
     pub fn columnText(self: Sqlite3StatementRow, col: i32, alloc: std.mem.Allocator) ![]const u8 {
