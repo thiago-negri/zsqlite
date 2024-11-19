@@ -5,85 +5,86 @@ const c = @cImport({
 
 /// Wrapper of sqlite3
 pub const Sqlite3 = struct {
-    ptr: *c.sqlite3,
+    sqlite3: *c.sqlite3,
 
     /// Wrapper of sqlite3_open
-    pub fn init(filename: []const u8) SqliteError!Sqlite3 {
-        var db: ?*c.sqlite3 = null;
+    pub fn init(filename: []const u8) Err!Sqlite3 {
+        var opt_sqlite3: ?*c.sqlite3 = null;
 
         // SQLite may assign the pointer even if sqlite3_open returns an error code.
-        errdefer if (db != null) {
-            _ = c.sqlite3_close(db);
+        errdefer if (opt_sqlite3 != null) {
+            _ = c.sqlite3_close(opt_sqlite3);
         };
 
-        const err = c.sqlite3_open(filename.ptr, &db);
-        try expectSqliteOk(err);
+        const res = c.sqlite3_open(filename.ptr, &opt_sqlite3);
+        try expectSqliteOk(res);
 
-        if (db) |ptr| {
-            return Sqlite3{ .ptr = ptr };
+        if (opt_sqlite3) |sqlite3| {
+            return Sqlite3{ .sqlite3 = sqlite3 };
         } else {
-            return SqliteError.Error;
+            return Err.Error;
         }
     }
 
     /// Wrapper of sqlite3_close
     pub fn deinit(self: Sqlite3) void {
-        _ = c.sqlite3_close(self.ptr);
+        _ = c.sqlite3_close(self.sqlite3);
     }
 
     /// Extra, kind of similar to sqlite3_exec, but it doesn't process rows. It expects the SQL to
     /// not return anything.
-    pub fn exec(self: Sqlite3, sql: []const u8) SqliteError!void {
+    pub fn exec(self: Sqlite3, sql: []const u8) Err!void {
         const stmt = try self.prepare(sql);
         defer stmt.deinit();
         try stmt.exec();
     }
 
     /// Wrapper of sqlite3_prepare_v2
-    pub fn prepare(self: Sqlite3, sql: []const u8) SqliteError!Sqlite3Statement {
-        var stmt: ?*c.sqlite3_stmt = null;
-        errdefer if (stmt != null) {
-            _ = c.sqlite3_finalize(stmt);
+    pub fn prepare(self: Sqlite3, sql: []const u8) Err!Statement {
+        var opt_stmt: ?*c.sqlite3_stmt = null;
+        errdefer if (opt_stmt != null) {
+            _ = c.sqlite3_finalize(opt_stmt);
         };
 
         // If the caller knows that the supplied string is nul-terminated, then there is a
         // small performance advantage to passing an nByte parameter that is the number of bytes
         // in the input string including the nul-terminator.
         // See https://www3.sqlite.org/c3ref/prepare.html
-        const err = c.sqlite3_prepare_v2(self.ptr, sql.ptr, @intCast(sql.len + 1), &stmt, null);
-        try expectSqliteOk(err);
+        const len = sql.len + 1;
+        const res = c.sqlite3_prepare_v2(self.sqlite3, sql.ptr, @intCast(len), &opt_stmt, null);
+        try expectSqliteOk(res);
 
-        if (stmt) |ptr| {
-            return Sqlite3Statement{ .ptr = ptr };
+        if (opt_stmt) |stmt| {
+            return Statement{ .stmt = stmt };
         } else {
-            return SqliteError.Error;
+            return Err.Error;
         }
     }
 
     /// Extra, prints the last error related to this database
     pub fn printError(self: Sqlite3, tag: []const u8) void {
-        const db = self.ptr;
-        const sqlite_errcode = c.sqlite3_extended_errcode(db);
-        const sqlite_errmsg = c.sqlite3_errmsg(db);
+        const sqlite3 = self.sqlite3;
+        const sqlite_errcode = c.sqlite3_extended_errcode(sqlite3);
+        const sqlite_errmsg = c.sqlite3_errmsg(sqlite3);
         std.debug.print("{s} {d}: {s}\n", .{ tag, sqlite_errcode, sqlite_errmsg });
     }
 };
 
 /// Wrapper of sqlite3_stmt, exposing a subset of functions that are not related to the current
 /// row after a call to sqlite3_step.
-pub const Sqlite3Statement = struct {
-    ptr: *c.sqlite3_stmt,
+pub const Statement = struct {
+    stmt: *c.sqlite3_stmt,
 
     /// Wrapper of sqlite3_finalize
-    pub fn deinit(self: Sqlite3Statement) void {
-        _ = c.sqlite3_finalize(self.ptr);
+    pub fn deinit(self: Statement) void {
+        _ = c.sqlite3_finalize(self.stmt);
     }
 
     /// Extra, performs a sqlite3_step and expects to be SQLITE_DONE.
-    pub fn exec(self: Sqlite3Statement) SqliteError!void {
+    pub fn exec(self: Statement) Err!void {
         const res = try self.step();
         if (null != res) {
-            return SqliteError.Misuse;
+            return Err.Misuse;
         }
     }
 
@@ -91,104 +92,108 @@ pub const Sqlite3Statement = struct {
     /// Returns the subset of functions related to row management if SQLITE_ROW
     /// Returns null if SQLITE_DONE
     /// Error otherwise
-    pub fn step(self: Sqlite3Statement) SqliteError!?Sqlite3StatementRow {
-        const stmt = self.ptr;
-        const err = c.sqlite3_step(stmt);
-        switch (err) {
+    pub fn step(self: Statement) Err!?Row {
+        const stmt = self.stmt;
+        const res = c.sqlite3_step(stmt);
+        switch (res) {
             c.SQLITE_ROW => {
-                return Sqlite3StatementRow{ .ptr = self.ptr };
+                return Row{ .stmt = stmt };
             },
             c.SQLITE_DONE => {
                 return null;
             },
             else => {
-                return SqliteError.Error;
+                return Err.Error;
             },
         }
     }
 
     /// Wrapper of sqlite3_reset
-    pub fn reset(self: Sqlite3Statement) !void {
-        const err = c.sqlite3_reset(self.ptr);
-        try expectSqliteOk(err);
+    pub fn reset(self: Statement) !void {
+        const res = c.sqlite3_reset(self.stmt);
+        try expectSqliteOk(res);
     }
 
     /// Wrapper of sqlite3_bind_text with SQLITE_STATIC
-    pub fn bindText(self: Sqlite3Statement, col: i32, text: []const u8) !void {
+    /// indicate that the application remains responsible for disposing of the object
+    pub fn bindText(self: Statement, col: i32, text: []const u8) !void {
         try self.bindTextDestructor(col, text, c.SQLITE_STATIC);
     }
 
     /// Wrapper of sqlite3_bind_text with SQLITE_TRANSIENT
-    pub fn bindTextCopy(self: Sqlite3Statement, col: i32, text: []const u8) !void {
+    /// indicate that the object is to be copied, SQLite will then manage the lifetime of its copy
+    pub fn bindTextCopy(self: Statement, col: i32, text: []const u8) !void {
         try self.bindTextDestructor(col, text, c.SQLITE_TRANSIENT);
     }
 
     /// Wrapper of sqlite3_bind_blob with SQLITE_STATIC
-    pub fn bindBlob(self: Sqlite3Statement, col: i32, data: []const u8) !void {
+    /// indicate that the application remains responsible for disposing of the object
+    pub fn bindBlob(self: Statement, col: i32, data: []const u8) !void {
         try self.bindBlobDestructor(col, data, c.SQLITE_STATIC);
     }
 
     /// Wrapper of sqlite3_bind_blob with SQLITE_TRANSIENT
-    pub fn bindBlobCopy(self: Sqlite3Statement, col: i32, data: []const u8) !void {
+    /// indicate that the object is to be copied, SQLite will then manage the lifetime of its copy
+    pub fn bindBlobCopy(self: Statement, col: i32, data: []const u8) !void {
         try self.bindBlobDestructor(col, data, c.SQLITE_TRANSIENT);
     }
 
     /// Internal wrapper of sqlite3_bind_text
     const Destructor = @TypeOf(c.SQLITE_STATIC);
-    fn bindTextDestructor(self: Sqlite3Statement, col: i32, text: []const u8, destructor: Destructor) !void {
-        const stmt = self.ptr;
-        const err = c.sqlite3_bind_text(stmt, col, text.ptr, @intCast(text.len), destructor);
-        try expectSqliteOk(err);
+    fn bindTextDestructor(self: Statement, col: i32, text: []const u8, destructor: Destructor) !void {
+        const stmt = self.stmt;
+        const res = c.sqlite3_bind_text(stmt, col, text.ptr, @intCast(text.len), destructor);
+        try expectSqliteOk(res);
     }
 
     /// Internal wrapper of sqlite3_bind_blob
-    fn bindBlobDestructor(self: Sqlite3Statement, col: i32, data: []const u8, destructor: Destructor) !void {
-        const stmt = self.ptr;
-        const err = c.sqlite3_bind_blob(stmt, col, data.ptr, @intCast(data.len), destructor);
-        try expectSqliteOk(err);
+    fn bindBlobDestructor(self: Statement, col: i32, data: []const u8, destructor: Destructor) !void {
+        const stmt = self.stmt;
+        const res = c.sqlite3_bind_blob(stmt, col, data.ptr, @intCast(data.len), destructor);
+        try expectSqliteOk(res);
     }
 
     /// Wrapper of sqlite3_bind_null
-    pub fn bindNull(self: Sqlite3Statement, col: i32) !void {
-        const err = c.sqlite3_bind_null(self.ptr, col);
-        try expectSqliteOk(err);
+    pub fn bindNull(self: Statement, col: i32) !void {
+        const res = c.sqlite3_bind_null(self.stmt, col);
+        try expectSqliteOk(res);
     }
 
     /// Wrapper of sqlite3_bind_double, sqlite3_bind_int, and sqlite3_bind_int64
-    pub fn bind(self: Sqlite3Statement, col: i32, val: anytype) !void {
+    pub fn bind(self: Statement, col: i32, val: anytype) !void {
         const numeric_type = comptime getNumericType(@TypeOf(val));
-        const stmt = self.ptr;
-        var err: c_int = undefined;
+        const stmt = self.stmt;
+        var res: c_int = undefined;
         switch (numeric_type) {
             .int => {
-                err = c.sqlite3_bind_int(stmt, col, @as(i32, @intCast(val)));
+                res = c.sqlite3_bind_int(stmt, col, @as(i32, @intCast(val)));
             },
             .int64 => {
-                err = c.sqlite3_bind_int64(stmt, col, @as(i64, @intCast(val)));
+                res = c.sqlite3_bind_int64(stmt, col, @as(i64, @intCast(val)));
             },
             .double => {
-                err = c.sqlite3_bind_double(stmt, col, @as(f64, @floatCast(val)));
+                res = c.sqlite3_bind_double(stmt, col, @as(f64, @floatCast(val)));
             },
         }
-        try expectSqliteOk(err);
+        try expectSqliteOk(res);
     }
 };
 
 /// Wrapper of sqlite3_stmt, exposing subset of functions related to the current row after a call
 /// to sqlite3_step.
-pub const Sqlite3StatementRow = struct {
-    ptr: *c.sqlite3_stmt,
+pub const Row = struct {
+    stmt: *c.sqlite3_stmt,
 
     /// Extra, duplicates the memory returned by sqlite3_column_text
-    pub fn columnText(self: Sqlite3StatementRow, col: i32, alloc: std.mem.Allocator) ![]const u8 {
+    pub fn columnText(self: Row, col: i32, alloc: std.mem.Allocator) ![]const u8 {
         const data = self.columnTextPtr(col);
         return try alloc.dupe(u8, data);
     }
 
     /// Wrapper of sqlite3_column_text
     /// The returned pointer is managed by SQLite and is invalidated on next step or reset
-    pub fn columnTextPtr(self: Sqlite3StatementRow, col: i32) []const u8 {
-        const stmt = self.ptr;
+    pub fn columnTextPtr(self: Row, col: i32) []const u8 {
+        const stmt = self.stmt;
         const c_ptr = c.sqlite3_column_text(stmt, col);
         const size: usize = @intCast(c.sqlite3_column_bytes(stmt, col));
         const data = c_ptr[0..size];
@@ -196,15 +201,15 @@ pub const Sqlite3StatementRow = struct {
     }
 
     /// Extra, duplicates the memory returned by sqlite3_column_text
-    pub fn columnBlob(self: Sqlite3StatementRow, col: i32, alloc: std.mem.Allocator) ![]const u8 {
+    pub fn columnBlob(self: Row, col: i32, alloc: std.mem.Allocator) ![]const u8 {
         const data = self.columnBlobPtr(col);
         return try alloc.dupe(u8, data);
     }
 
     /// Wrapper of sqlite3_column_blob
     /// The returned pointer is managed by SQLite and is invalidated on next step or reset
-    pub fn columnBlobPtr(self: Sqlite3StatementRow, col: i32) []const u8 {
-        const stmt = self.ptr;
+    pub fn columnBlobPtr(self: Row, col: i32) []const u8 {
+        const stmt = self.stmt;
         const c_ptr = @as([*c]const u8, @ptrCast(c.sqlite3_column_blob(stmt, col)));
         const size: usize = @intCast(c.sqlite3_column_bytes(stmt, col));
         const data = c_ptr[0..size];
@@ -212,9 +217,9 @@ pub const Sqlite3StatementRow = struct {
     }
 
     /// Wrapper of sqlite3_column_int, sqlite_column_int64, and sqlite3_column_double
-    pub fn column(self: Sqlite3StatementRow, col: i32, comptime T: type) T {
+    pub fn column(self: Row, col: i32, comptime T: type) T {
         const numeric_type = comptime getNumericType(T);
-        const stmt = self.ptr;
+        const stmt = self.stmt;
         switch (numeric_type) {
             .int => {
                 return @as(T, @intCast(c.sqlite3_column_int(stmt, col)));
@@ -229,8 +234,8 @@ pub const Sqlite3StatementRow = struct {
     }
 
     /// Wrapper for sqlite3_column_type
-    pub fn columnType(self: Sqlite3StatementRow, col: i32) !SqliteColumnType {
-        const sqlite_type = c.sqlite3_column_type(self.ptr, col);
+    pub fn columnType(self: Row, col: i32) !ColumnType {
+        const sqlite_type = c.sqlite3_column_type(self.stmt, col);
         switch (sqlite_type) {
             c.SQLITE_INTEGER => {
                 return .integer;
@@ -254,19 +259,21 @@ pub const Sqlite3StatementRow = struct {
     }
 };
 
-pub const SqliteColumnType = enum { integer, float, text, blob, null };
+/// https://www3.sqlite.org/c3ref/c_blob.html
+pub const ColumnType = enum { integer, float, text, blob, null };
 
-pub const SqliteError = error{ Misuse, Error };
+pub const Err = error{ Misuse, Error };
 
-fn expectSqliteOk(err: c_int) SqliteError!void {
-    if (c.SQLITE_OK != err) {
-        return SqliteError.Error;
+fn expectSqliteOk(res: c_int) Err!void {
+    if (c.SQLITE_OK != res) {
+        return Err.Error;
     }
 }
 
-const SqliteNumericType = enum { int, int64, double };
+/// Numeric types available in SQLite C API
+const NumericType = enum { int, int64, double };
 
-fn getNumericType(comptime T: type) SqliteNumericType {
+fn getNumericType(comptime T: type) NumericType {
     switch (@typeInfo(T)) {
         .int => |info| {
             if (info.signedness == .unsigned) {
