@@ -40,7 +40,7 @@ pub const Sqlite3 = struct {
     }
 
     /// Wrapper of sqlite3_prepare_v2
-    pub fn prepare(self: Sqlite3, sql: []const u8) Err!Statement {
+    pub fn prepare(self: Sqlite3, sql: [:0]const u8) Err!Statement {
         var opt_stmt: ?*c.sqlite3_stmt = null;
         errdefer if (opt_stmt != null) {
             _ = c.sqlite3_finalize(opt_stmt);
@@ -253,7 +253,7 @@ pub const Row = struct {
                 return .null;
             },
             else => {
-                return error.SqliteError;
+                return Err.Error;
             },
         }
     }
