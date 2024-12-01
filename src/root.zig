@@ -33,7 +33,7 @@ pub const Sqlite3 = struct {
 
     /// Extra, kind of similar to sqlite3_exec, but it doesn't process rows. It expects the SQL to
     /// not return anything.
-    pub fn exec(self: Sqlite3, sql: []const u8) Err!void {
+    pub fn exec(self: Sqlite3, sql: [:0]const u8) Err!void {
         const stmt = try self.prepare(sql);
         defer stmt.deinit();
         try stmt.exec();
@@ -109,58 +109,58 @@ pub const Statement = struct {
     }
 
     /// Wrapper of sqlite3_reset
-    pub fn reset(self: Statement) !void {
+    pub fn reset(self: Statement) Err!void {
         const res = c.sqlite3_reset(self.stmt);
         try expectSqliteOk(res);
     }
 
     /// Wrapper of sqlite3_bind_text with SQLITE_STATIC
     /// indicate that the application remains responsible for disposing of the object
-    pub fn bindText(self: Statement, col: i32, text: []const u8) !void {
+    pub fn bindText(self: Statement, col: i32, text: []const u8) Err!void {
         try self.bindTextDestructor(col, text, c.SQLITE_STATIC);
     }
 
     /// Wrapper of sqlite3_bind_text with SQLITE_TRANSIENT
     /// indicate that the object is to be copied, SQLite will then manage the lifetime of its copy
-    pub fn bindTextCopy(self: Statement, col: i32, text: []const u8) !void {
+    pub fn bindTextCopy(self: Statement, col: i32, text: []const u8) Err!void {
         try self.bindTextDestructor(col, text, c.SQLITE_TRANSIENT);
     }
 
     /// Wrapper of sqlite3_bind_blob with SQLITE_STATIC
     /// indicate that the application remains responsible for disposing of the object
-    pub fn bindBlob(self: Statement, col: i32, data: []const u8) !void {
+    pub fn bindBlob(self: Statement, col: i32, data: []const u8) Err!void {
         try self.bindBlobDestructor(col, data, c.SQLITE_STATIC);
     }
 
     /// Wrapper of sqlite3_bind_blob with SQLITE_TRANSIENT
     /// indicate that the object is to be copied, SQLite will then manage the lifetime of its copy
-    pub fn bindBlobCopy(self: Statement, col: i32, data: []const u8) !void {
+    pub fn bindBlobCopy(self: Statement, col: i32, data: []const u8) Err!void {
         try self.bindBlobDestructor(col, data, c.SQLITE_TRANSIENT);
     }
 
     /// Internal wrapper of sqlite3_bind_text
     const Destructor = @TypeOf(c.SQLITE_STATIC);
-    fn bindTextDestructor(self: Statement, col: i32, text: []const u8, destructor: Destructor) !void {
+    fn bindTextDestructor(self: Statement, col: i32, text: []const u8, destructor: Destructor) Err!void {
         const stmt = self.stmt;
         const res = c.sqlite3_bind_text(stmt, col, text.ptr, @intCast(text.len), destructor);
         try expectSqliteOk(res);
     }
 
     /// Internal wrapper of sqlite3_bind_blob
-    fn bindBlobDestructor(self: Statement, col: i32, data: []const u8, destructor: Destructor) !void {
+    fn bindBlobDestructor(self: Statement, col: i32, data: []const u8, destructor: Destructor) Err!void {
         const stmt = self.stmt;
         const res = c.sqlite3_bind_blob(stmt, col, data.ptr, @intCast(data.len), destructor);
         try expectSqliteOk(res);
     }
 
     /// Wrapper of sqlite3_bind_null
-    pub fn bindNull(self: Statement, col: i32) !void {
+    pub fn bindNull(self: Statement, col: i32) Err!void {
         const res = c.sqlite3_bind_null(self.stmt, col);
         try expectSqliteOk(res);
     }
 
     /// Wrapper of sqlite3_bind_double, sqlite3_bind_int, and sqlite3_bind_int64
-    pub fn bind(self: Statement, col: i32, val: anytype) !void {
+    pub fn bind(self: Statement, col: i32, val: anytype) Err!void {
         const numeric_type = comptime getNumericType(@TypeOf(val));
         const stmt = self.stmt;
         var res: c_int = undefined;
@@ -185,7 +185,7 @@ pub const Row = struct {
     stmt: *c.sqlite3_stmt,
 
     /// Extra, duplicates the memory returned by sqlite3_column_text
-    pub fn columnText(self: Row, col: i32, alloc: std.mem.Allocator) ![]const u8 {
+    pub fn columnText(self: Row, col: i32, alloc: std.mem.Allocator) std.mem.Allocator.Error![]const u8 {
         const data = self.columnTextPtr(col);
         return try alloc.dupe(u8, data);
     }
@@ -201,7 +201,7 @@ pub const Row = struct {
     }
 
     /// Extra, duplicates the memory returned by sqlite3_column_text
-    pub fn columnBlob(self: Row, col: i32, alloc: std.mem.Allocator) ![]const u8 {
+    pub fn columnBlob(self: Row, col: i32, alloc: std.mem.Allocator) std.mem.Allocator.Error![]const u8 {
         const data = self.columnBlobPtr(col);
         return try alloc.dupe(u8, data);
     }
@@ -234,7 +234,7 @@ pub const Row = struct {
     }
 
     /// Wrapper for sqlite3_column_type
-    pub fn columnType(self: Row, col: i32) !ColumnType {
+    pub fn columnType(self: Row, col: i32) Err!ColumnType {
         const sqlite_type = c.sqlite3_column_type(self.stmt, col);
         switch (sqlite_type) {
             c.SQLITE_INTEGER => {
@@ -303,6 +303,70 @@ fn getNumericType(comptime T: type) NumericType {
             @compileError("expecting a numeric type");
         },
     }
+}
+
+/// Extra type that provides an easier (typed) way to iterate over rows
+pub fn StatementIterator(Item: type, extractor: fn (row: Row) Item, sql: [:0]const u8) type {
+    return struct {
+        stmt: Statement,
+
+        const Self = @This();
+
+        pub fn prepare(db: Sqlite3) Err!Self {
+            const stmt = try db.prepare(sql);
+            return Self{ .stmt = stmt };
+        }
+
+        pub fn reset(self: Self) Err!void {
+            try self.stmt.reset();
+        }
+
+        pub fn deinit(self: Self) void {
+            self.stmt.deinit();
+        }
+
+        pub fn next(self: Self) !?Item {
+            if (try self.stmt.step()) |row| {
+                const item = extractor(row);
+                return item;
+            }
+            return null;
+        }
+    };
+}
+
+fn StmtIterAllocFn(Item: type) type {
+    return fn (alloc: std.mem.Allocator, row: Row) std.mem.Allocator.Error!Item;
+}
+
+/// Extra type that provides an easier (typed) way to iterate over rows (with allocation)
+pub fn StatementIteratorAlloc(Item: type, extractor: StmtIterAllocFn(Item), sql: [:0]const u8) type {
+    return struct {
+        stmt: Statement,
+
+        const Self = @This();
+
+        pub fn prepare(db: Sqlite3) Err!Self {
+            const stmt = try db.prepare(sql);
+            return Self{ .stmt = stmt };
+        }
+
+        pub fn reset(self: Self) Err!void {
+            try self.stmt.reset();
+        }
+
+        pub fn deinit(self: Self) void {
+            self.stmt.deinit();
+        }
+
+        pub fn next(self: Self, alloc: std.mem.Allocator) !?Item {
+            if (try self.stmt.step()) |row| {
+                const item = try extractor(alloc, row);
+                return item;
+            }
+            return null;
+        }
+    };
 }
 
 test "all" {
@@ -386,5 +450,82 @@ test "all" {
 
         row = try select.step();
         try expect(null == row);
+    }
+
+    try db.exec("CREATE TABLE t_iter (c_text TEXT)");
+    try db.exec("INSERT INTO t_iter (c_text) VALUES ('foo'),('bar'),('baz')");
+
+    // Iterator
+    {
+        const TableRow = struct {
+            text: []const u8,
+            const Self = @This();
+
+            pub fn init(row: Row) Self {
+                const text = row.columnTextPtr(0);
+                return Self{ .text = text };
+            }
+        };
+        const TableIterator = StatementIterator(TableRow, TableRow.init, "SELECT c_text FROM t_iter");
+
+        const iter = try TableIterator.prepare(db);
+        defer iter.deinit();
+
+        var item = try iter.next();
+        try std.testing.expectEqualStrings("foo", item.?.text);
+        item = try iter.next();
+        try std.testing.expectEqualStrings("bar", item.?.text);
+        item = try iter.next();
+        try std.testing.expectEqualStrings("baz", item.?.text);
+        item = try iter.next();
+        try std.testing.expectEqual(null, item);
+
+        try iter.reset();
+        item = try iter.next();
+        try std.testing.expectEqualStrings("foo", item.?.text);
+        item = try iter.next();
+        try std.testing.expectEqualStrings("bar", item.?.text);
+        item = try iter.next();
+        try std.testing.expectEqualStrings("baz", item.?.text);
+        item = try iter.next();
+        try std.testing.expectEqual(null, item);
+    }
+
+    // Iterator Alloc
+    {
+        const TableRowAlloc = struct {
+            text: []const u8,
+            const Self = @This();
+
+            pub fn init(alloc: std.mem.Allocator, row: Row) std.mem.Allocator.Error!Self {
+                const text = try row.columnText(0, alloc);
+                return Self{ .text = text };
+            }
+
+            pub fn deinit(self: Self, alloc: std.mem.Allocator) void {
+                alloc.free(self.text);
+            }
+        };
+        const TableIterator = StatementIteratorAlloc(TableRowAlloc, TableRowAlloc.init, "SELECT c_text FROM t_iter");
+
+        const iter = try TableIterator.prepare(db);
+        defer iter.deinit();
+
+        // Fetch all at once to show that they can allocate memory
+        const foo = try iter.next(std.testing.allocator);
+        defer foo.?.deinit(std.testing.allocator);
+
+        const bar = try iter.next(std.testing.allocator);
+        defer bar.?.deinit(std.testing.allocator);
+
+        const baz = try iter.next(std.testing.allocator);
+        defer baz.?.deinit(std.testing.allocator);
+
+        const end = try iter.next(std.testing.failing_allocator);
+
+        try std.testing.expectEqualStrings("foo", foo.?.text);
+        try std.testing.expectEqualStrings("bar", bar.?.text);
+        try std.testing.expectEqualStrings("baz", baz.?.text);
+        try std.testing.expectEqual(null, end);
     }
 }
