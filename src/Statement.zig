@@ -1,20 +1,36 @@
 //! Wrapper of sqlite3_stmt, exposing a subset of functions that are not related to the current
 //! row after a call to sqlite3_step.
-const Statement = @This();
 
+const build_options = @import("build_options");
+const cmp = @import("comptime.zig");
+const err = @import("err.zig");
+const Row = @import("Row.zig");
+const Sqlite3 = @import("Sqlite3.zig");
+const Statement = @This();
 const std = @import("std");
+
 const c = @cImport({
     @cInclude("sqlite3.h");
 });
-const err = @import("./err.zig");
-const cmp = @import("./comptime.zig");
-const Row = @import("./Row.zig");
+
+const track = build_options.track_open_statements;
 
 stmt: *c.sqlite3_stmt,
+sqlite3: cmp.OptType(track, *Sqlite3) = cmp.optValue(track, undefined),
 
 /// Wrapper of sqlite3_finalize
 pub fn deinit(self: Statement) void {
     _ = c.sqlite3_finalize(self.stmt);
+    if (track) {
+        // FIXME: Track open statements in a way that's thread safe
+        const index = blk: for (self.sqlite3.open_statements.items, 0..) |item, i| {
+            if (item.statement.stmt == self.stmt) {
+                break :blk i;
+            }
+        } else unreachable;
+        const item = self.sqlite3.open_statements.swapRemove(index);
+        self.sqlite3.alloc.free(item.stack_trace.instruction_addresses);
+    }
 }
 
 pub const ExecError = error{Misuse};

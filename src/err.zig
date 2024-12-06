@@ -1,6 +1,12 @@
+const cmp = @import("comptime.zig");
+const build_options = @import("build_options");
+const std = @import("std");
+
 const c = @cImport({
     @cInclude("sqlite3.h");
 });
+
+const track = build_options.track_open_statements;
 
 /// List of SQLite 3 errors
 pub const Sqlite3Error = error{

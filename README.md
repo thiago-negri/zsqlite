@@ -9,10 +9,8 @@ Goals:
 - Provide more safety (e.g. automatically close/finalize if something goes wrong);
 - Provide extras so it's easier to work with it in Zig (e.g. offer a way to allocate strings);
 
-It's currently very limited, as I'm only using this for a personal project. So my current target
-is only on a subset of features that I use. 
-
-Feel free to fork or offer pull requests.
+Offers a limited subset of SQLite.  As I'm only using this for a personal project, my current target
+is only on some features that I use.
 
 If you only want to use SQLite as a static library in Zig, check out
 [zsqlite-c](https://github.com/thiago-negri/zsqlite-c/).
@@ -29,7 +27,14 @@ Add to your build:
 
 ```zig
 // Add SQLite
-const zsqlite = b.dependency("zsqlite", .{ .target = target, .optimize = optimize });
+const zsqlite = b.dependency("zsqlite", .{
+    .target = target,
+    .optimize = optimize,
+    // Tracks open statements and panics if a close is attempted on a connection that
+    // still has unfinallized statements.  Defaults to true.
+    // Setting it to false will strip that code from the executable, so no overhead.
+    .track_open_statements = true,
+});
 const zsqlite_module = zsqlite.module("zsqlite");
 exe.root_module.addImport("zsqlite", zsqlite_module);
 ```

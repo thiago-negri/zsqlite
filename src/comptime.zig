@@ -32,3 +32,11 @@ pub fn getNumericType(comptime T: type) NumericType {
         },
     }
 }
+
+pub fn OptType(comptime flag: bool, t: type) type {
+    return if (flag) t else void;
+}
+
+pub fn optValue(comptime flag: bool, v: anytype) OptType(flag, @TypeOf(v)) {
+    return if (flag) v else {};
+}

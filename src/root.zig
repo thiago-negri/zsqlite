@@ -15,7 +15,7 @@ pub const StatementIteratorAlloc = iterators.StatementIteratorAlloc;
 test "all" {
     const expect = std.testing.expect;
 
-    const db = try Sqlite3.init(":memory:");
+    var db = try Sqlite3.init(":memory:", .{ .alloc = std.testing.allocator });
     defer db.deinit();
     errdefer db.printError("last sqlite error");
 
@@ -111,7 +111,7 @@ test "all" {
         };
         const TableIterator = StatementIterator(TableRow, TableRow.init, "SELECT c_text FROM t_iter");
 
-        const iter = try TableIterator.prepare(db);
+        const iter = try TableIterator.prepare(&db);
         defer iter.deinit();
 
         var item = try iter.next();
@@ -151,7 +151,7 @@ test "all" {
         };
         const TableIterator = StatementIteratorAlloc(TableRowAlloc, TableRowAlloc.init, "SELECT c_text FROM t_iter");
 
-        const iter = try TableIterator.prepare(db);
+        const iter = try TableIterator.prepare(&db);
         defer iter.deinit();
 
         // Fetch all at once to show that they can allocate memory

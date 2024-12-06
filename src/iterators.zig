@@ -11,7 +11,7 @@ pub fn StatementIterator(Item: type, extractor: fn (row: Row) Item, sql: [:0]con
 
         const Self = @This();
 
-        pub fn prepare(db: Sqlite3) err.Sqlite3Error!Self {
+        pub fn prepare(db: *Sqlite3) (std.mem.Allocator.Error || err.Sqlite3Error)!Self {
             const stmt = try db.prepare(sql);
             return Self{ .stmt = stmt };
         }
@@ -45,7 +45,7 @@ pub fn StatementIteratorAlloc(Item: type, extractor: StmtIterAllocFn(Item), sql:
 
         const Self = @This();
 
-        pub fn prepare(db: Sqlite3) err.Sqlite3Error!Self {
+        pub fn prepare(db: *Sqlite3) (std.mem.Allocator.Error || err.Sqlite3Error)!Self {
             const stmt = try db.prepare(sql);
             return Self{ .stmt = stmt };
         }
