@@ -1,4 +1,4 @@
-/// Wrapper of sqlite3
+//! Wrapper of sqlite3
 const Sqlite3 = @This();
 
 const std = @import("std");

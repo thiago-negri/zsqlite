@@ -1,5 +1,5 @@
-/// Wrapper of sqlite3_stmt, exposing subset of functions related to the current row after a call
-/// to sqlite3_step.
+//! Wrapper of sqlite3_stmt, exposing subset of functions related to the current row after a call
+//! to sqlite3_step.
 const Row = @This();
 
 const std = @import("std");
