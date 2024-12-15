@@ -34,12 +34,17 @@ pub fn StatementIterator(Item: type, extractor: fn (row: Row) Item, sql: [:0]con
     };
 }
 
-fn StmtIterAllocFn(Item: type) type {
-    return fn (alloc: std.mem.Allocator, row: Row) std.mem.Allocator.Error!Item;
+fn StmtIterAllocFn(Item: type, Error: type) type {
+    return fn (alloc: std.mem.Allocator, row: Row) Error!Item;
 }
 
 /// Extra type that provides an easier (typed) way to iterate over rows (with allocation)
-pub fn StatementIteratorAlloc(Item: type, extractor: StmtIterAllocFn(Item), sql: [:0]const u8) type {
+pub fn StatementIteratorAlloc(
+    Item: type,
+    Error: type,
+    extractor: StmtIterAllocFn(Item, Error),
+    sql: [:0]const u8,
+) type {
     return struct {
         stmt: Statement,
 
@@ -58,7 +63,7 @@ pub fn StatementIteratorAlloc(Item: type, extractor: StmtIterAllocFn(Item), sql:
             self.stmt.deinit();
         }
 
-        pub fn next(self: Self, alloc: std.mem.Allocator) (err.Sqlite3Error || std.mem.Allocator.Error)!?Item {
+        pub fn next(self: Self, alloc: std.mem.Allocator) (err.Sqlite3Error || Error)!?Item {
             if (try self.stmt.step()) |row| {
                 const item = try extractor(alloc, row);
                 return item;
